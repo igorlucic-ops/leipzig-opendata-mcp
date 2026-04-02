@@ -67,4 +67,5 @@ async def health(request: Request) -> PlainTextResponse:
 
 
 # No middleware argument — no auth at all
-app = mcp.http_app()
+# Use SSE transport for Intric compatibility
+app = mcp.http_app(transport="sse")

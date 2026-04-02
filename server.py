@@ -60,12 +60,26 @@ mcp.tool(annotations={"readOnlyHint": True})(list_organizations)
 mcp.tool(annotations={"readOnlyHint": True})(list_groups)
 mcp.tool(annotations={"readOnlyHint": True})(list_tags)
 
-
+# Health endpoint
 @mcp.custom_route("/health", methods=["GET"])
 async def health(request: Request) -> PlainTextResponse:
     return PlainTextResponse("OK")
 
+# Build the MCP Starlette app with streamable-http
+_inner_app = mcp.http_app(transport="streamable-http")
 
-# No middleware argument — no auth at all
-# Use SSE transport for Intric compatibility
-app = mcp.http_app(transport="sse")
+
+# Pure ASGI wrapper that rewrites /mcp -> /mcp/ to avoid 307 redirect
+class SlashRewriteWrapper:
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] == "http" and scope["path"] == "/mcp":
+            scope = dict(scope)
+            scope["path"] = "/mcp/"
+            scope["raw_path"] = b"/mcp/"
+        await self.app(scope, receive, send)
+
+
+app = SlashRewriteWrapper(_inner_app)

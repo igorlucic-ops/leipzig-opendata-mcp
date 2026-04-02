@@ -1,6 +1,36 @@
+import os
+
+from dotenv import load_dotenv
 from fastmcp import FastMCP
+from fastmcp.server.auth.providers.jwt import JWTVerifier
+from starlette.middleware import Middleware
 from starlette.requests import Request
 from starlette.responses import PlainTextResponse
+
+load_dotenv()
+
+from tools_leipzig import (
+    search_datasets,
+    get_dataset,
+    list_resources,
+    query_datastore,
+    list_organizations,
+    list_groups,
+    list_tags,
+)
+
+####### API KEY #######
+
+verifier = JWTVerifier(
+    public_key=os.getenv("MCP_SERVER_JWT_SECRET"),
+    issuer=os.getenv("MCP_SERVER_JWT_ISSUER", ""),
+    audience=os.getenv("MCP_SERVER_JWT_AUDIENCE", ""),
+    algorithm="HS256",
+)
+
+middleware = []
+
+####### SERVER CONFIGURATION #######
 
 INSTRUCTION_STRING = """
 Leipzig Open Data MCP — City of Leipzig open data portal (opendata.leipzig.de)
@@ -40,46 +70,25 @@ mcp = FastMCP(
     instructions=INSTRUCTION_STRING,
     version="1.0.0",
     website_url="https://opendata.leipzig.de",
+    auth=verifier,
 )
 
-from tools_leipzig import (
-    search_datasets,
-    get_dataset,
-    list_resources,
-    query_datastore,
-    list_organizations,
-    list_groups,
-    list_tags,
-)
+####### TOOLS — all with requires_permission: False #######
 
-mcp.tool(annotations={"readOnlyHint": True, "openWorldHint": True})(search_datasets)
-mcp.tool(annotations={"readOnlyHint": True, "openWorldHint": True})(get_dataset)
-mcp.tool(annotations={"readOnlyHint": True, "openWorldHint": True})(list_resources)
-mcp.tool(annotations={"readOnlyHint": True, "openWorldHint": True})(query_datastore)
-mcp.tool(annotations={"readOnlyHint": True})(list_organizations)
-mcp.tool(annotations={"readOnlyHint": True})(list_groups)
-mcp.tool(annotations={"readOnlyHint": True})(list_tags)
+mcp.tool(meta={"requires_permission": False})(search_datasets)
+mcp.tool(meta={"requires_permission": False})(get_dataset)
+mcp.tool(meta={"requires_permission": False})(list_resources)
+mcp.tool(meta={"requires_permission": False})(query_datastore)
+mcp.tool(meta={"requires_permission": False})(list_organizations)
+mcp.tool(meta={"requires_permission": False})(list_groups)
+mcp.tool(meta={"requires_permission": False})(list_tags)
 
-# Health endpoint
+####### CUSTOM ROUTES #######
+
 @mcp.custom_route("/health", methods=["GET"])
 async def health(request: Request) -> PlainTextResponse:
     return PlainTextResponse("OK")
 
-# Build the MCP Starlette app with streamable-http
-_inner_app = mcp.http_app(transport="streamable-http")
+####### RUNNING THE SERVER #######
 
-
-# Pure ASGI wrapper that rewrites /mcp -> /mcp/ to avoid 307 redirect
-class SlashRewriteWrapper:
-    def __init__(self, app):
-        self.app = app
-
-    async def __call__(self, scope, receive, send):
-        if scope["type"] == "http" and scope["path"] == "/mcp":
-            scope = dict(scope)
-            scope["path"] = "/mcp/"
-            scope["raw_path"] = b"/mcp/"
-        await self.app(scope, receive, send)
-
-
-app = SlashRewriteWrapper(_inner_app)
+app = mcp.http_app(middleware=middleware)

@@ -1,13 +1,6 @@
-import os
-
-from dotenv import load_dotenv
 from fastmcp import FastMCP
-from fastmcp.server.auth.providers.jwt import JWTVerifier
-from starlette.middleware import Middleware
 from starlette.requests import Request
 from starlette.responses import PlainTextResponse
-
-load_dotenv()
 
 from tools_leipzig import (
     search_datasets,
@@ -18,19 +11,6 @@ from tools_leipzig import (
     list_groups,
     list_tags,
 )
-
-####### API KEY #######
-
-verifier = JWTVerifier(
-    public_key=os.getenv("MCP_SERVER_JWT_SECRET"),
-    issuer=os.getenv("MCP_SERVER_JWT_ISSUER", ""),
-    audience=os.getenv("MCP_SERVER_JWT_AUDIENCE", ""),
-    algorithm="HS256",
-)
-
-middleware = []
-
-####### SERVER CONFIGURATION #######
 
 INSTRUCTION_STRING = """
 Leipzig Open Data MCP — City of Leipzig open data portal (opendata.leipzig.de)
@@ -70,10 +50,7 @@ mcp = FastMCP(
     instructions=INSTRUCTION_STRING,
     version="1.0.0",
     website_url="https://opendata.leipzig.de",
-    auth=verifier,
 )
-
-####### TOOLS — all with requires_permission: False #######
 
 mcp.tool(meta={"requires_permission": False})(search_datasets)
 mcp.tool(meta={"requires_permission": False})(get_dataset)
@@ -83,12 +60,10 @@ mcp.tool(meta={"requires_permission": False})(list_organizations)
 mcp.tool(meta={"requires_permission": False})(list_groups)
 mcp.tool(meta={"requires_permission": False})(list_tags)
 
-####### CUSTOM ROUTES #######
 
 @mcp.custom_route("/health", methods=["GET"])
 async def health(request: Request) -> PlainTextResponse:
     return PlainTextResponse("OK")
 
-####### RUNNING THE SERVER #######
 
-app = mcp.http_app(middleware=middleware)
+app = mcp.http_app()
